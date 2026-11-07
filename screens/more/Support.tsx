@@ -1,0 +1,15 @@
+import { useState } from "react";
+import { Bug, Clipboard, Mail, MessageCircle, Send, Sparkles } from "lucide-react";
+import AppShell from "../../AppShell";
+import { useStore } from "../../store";
+import { Button, Card, TextInput } from "../../ui";
+import { PageStack } from "./common";
+function TextArea({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) { return <textarea value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} rows={4} className="w-full resize-y rounded-md border border-line-strong bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-faint focus:border-primary focus:outline-2 focus:outline-primary-line" />; }
+export default function Support() {
+  const { toast } = useStore(); const [bug, setBug] = useState(""); const [feature, setFeature] = useState("");
+  return <AppShell title="Contact support" back="/more" width="narrow"><PageStack>
+    <div className="grid gap-3 sm:grid-cols-2"><Card><div className="flex gap-3"><Mail size={20} strokeWidth={2} className="mt-0.5 text-primary" /><div><h2 className="text-sm font-semibold">Email support</h2><a href="mailto:support@timedexit.in" className="mt-1 block text-sm text-primary">support@timedexit.in</a><p className="mt-2 text-xs text-muted">Device info is attached automatically.</p></div></div></Card><Card><div className="flex gap-3"><MessageCircle size={20} strokeWidth={2} className="mt-0.5 text-primary" /><div><h2 className="text-sm font-semibold">Chat with us</h2><p className="mt-1 text-sm text-ink-2">Mon–Fri, 9 AM–6 PM</p><Button size="sm" variant="secondary" className="mt-3" onClick={() => toast("Support chat is offline right now", "info")}>Start a chat</Button></div></div></Card></div>
+    <Card><div className="flex items-center gap-2"><Bug size={18} strokeWidth={2} className="text-muted" /><h2 className="text-sm font-semibold tracking-tight">Report a bug</h2></div><p className="mb-3 mt-1 text-xs text-muted">Tell us what happened and we’ll investigate.</p><TextArea value={bug} onChange={setBug} placeholder="What happened? Include the steps you took…" /><Button className="mt-3" variant="secondary" size="sm" icon={Clipboard} onClick={() => toast("Screenshot attached", "info")}>Attach screenshot</Button><div className="mt-3 flex justify-end"><Button icon={Send} disabled={!bug.trim()} onClick={() => { setBug(""); toast("Bug report sent · Ticket #TE-20418"); }}>Send report</Button></div></Card>
+    <Card><div className="flex items-center gap-2"><Sparkles size={18} strokeWidth={2} className="text-muted" /><h2 className="text-sm font-semibold tracking-tight">Request a feature</h2></div><p className="mb-3 mt-1 text-xs text-muted">Share what would make Timed Exit more useful.</p><TextArea value={feature} onChange={setFeature} placeholder="Describe the feature you’d like…" /><div className="mt-3 flex justify-end"><Button icon={Send} disabled={!feature.trim()} onClick={() => { setFeature(""); toast("Feature request sent · Thank you"); }}>Send request</Button></div></Card>
+  </PageStack></AppShell>;
+}

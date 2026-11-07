@@ -1,0 +1,8 @@
+import { useState } from "react";
+import AppShell from "../../AppShell";
+import { Card, Segmented } from "../../ui";
+import { PageStack, SettingRow } from "./common";
+export default function Appearance() {
+  const [theme, setTheme] = useState("Light"); const [font, setFont] = useState("Default"); const [format, setFormat] = useState("Both");
+  return <AppShell title="Appearance" back="/more" width="narrow"><PageStack><Card><div className="divide-y divide-line"><SettingRow label="Theme"><Segmented options={[{ value: "Light", label: "Light" }, { value: "Dark", label: "Dark", hint: "Coming soon", disabled: true }, { value: "System", label: "System" }]} value={theme} onChange={setTheme} size="sm" /></SettingRow><SettingRow label="Font size"><Segmented options={[{ value: "Default", label: "Default" }, { value: "Large", label: "Large" }]} value={font} onChange={setFont} size="sm" /></SettingRow><SettingRow label="P&L display"><Segmented options={[{ value: "₹ Amount", label: "₹ Amount" }, { value: "Percentage", label: "Percentage" }, { value: "Both", label: "Both" }]} value={format} onChange={setFormat} size="sm" /></SettingRow></div></Card><Card><h2 className="text-sm font-semibold tracking-tight">Number format preview</h2><p className="mt-1 text-xs text-muted">Live position display</p><div className="mt-4 flex items-center justify-between rounded-md bg-surface-2 px-3 py-3"><span className="text-sm text-ink-2">NIFTY 24500 CE</span><span className="text-right font-mono text-sm font-medium tabular-nums text-profit">{format !== "Percentage" && <span>+₹4,838</span>}{format === "Both" && <span> · </span>}{format !== "₹ Amount" && <span>+11.8%</span>}</span></div></Card></PageStack></AppShell>;
+}
