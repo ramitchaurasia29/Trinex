@@ -96,6 +96,52 @@ export function NumberUnit<U extends string>({
   );
 }
 
+export type OrderPolicy = {
+  product: "MIS" | "NRML" | "CNC";
+  orderType: "MARKET" | "LIMIT";
+  validity: "DAY" | "IOC";
+  limitPrice: string | null;
+  slippageBps: string;
+};
+
+export const defaultOrderPolicy = (instrument: "fo" | "stock"): OrderPolicy => ({
+  product: instrument === "fo" ? "NRML" : "MIS",
+  orderType: "MARKET",
+  validity: "DAY",
+  limitPrice: null,
+  slippageBps: "5",
+});
+
+export function validateOrderPolicy(policy?: OrderPolicy): Record<string, string> {
+  const errors: Record<string, string> = {};
+  if (!policy) return { orderPolicy: "Choose an execution policy" };
+  if (policy.orderType === "LIMIT" && (!policy.limitPrice || Number(policy.limitPrice) <= 0)) errors["orderPolicy.limitPrice"] = "Enter a limit price above ₹0";
+  const slippage = Number(policy.slippageBps);
+  if (policy.slippageBps === "" || slippage < 0 || slippage > 100) errors["orderPolicy.slippageBps"] = "Use 0–100 bps";
+  return errors;
+}
+
+export function OrderPolicyFields({ value, onChange, instrument, errors, showErrors }: {
+  value: OrderPolicy;
+  onChange: (value: OrderPolicy) => void;
+  instrument: "fo" | "stock";
+  errors: Record<string, string>;
+  showErrors: boolean;
+}) {
+  const products = instrument === "fo"
+    ? [{ value: "MIS" as const, label: "MIS" }, { value: "NRML" as const, label: "NRML" }]
+    : [{ value: "MIS" as const, label: "MIS" }, { value: "CNC" as const, label: "CNC" }];
+  return (
+    <div className="flex flex-col gap-3">
+      <Field label="Product"><Segmented options={products} value={value.product as "MIS" | "NRML" | "CNC"} onChange={(product) => onChange({ ...value, product })} /></Field>
+      <Field label="Order Type"><Segmented options={[{ value: "MARKET" as const, label: "Market" }, { value: "LIMIT" as const, label: "Limit" }]} value={value.orderType} onChange={(orderType) => onChange({ ...value, orderType, limitPrice: orderType === "MARKET" ? null : value.limitPrice })} /></Field>
+      {value.orderType === "LIMIT" && <Field label="Limit Price" error={showErrors ? errors["orderPolicy.limitPrice"] : undefined}><TextInput value={value.limitPrice ?? ""} onChange={(limitPrice) => onChange({ ...value, limitPrice: clean(limitPrice) })} prefix="₹" inputMode="decimal" placeholder="e.g. 250" /></Field>}
+      <Field label="Validity"><Segmented options={[{ value: "DAY" as const, label: "Day" }, { value: "IOC" as const, label: "IOC" }]} value={value.validity} onChange={(validity) => onChange({ ...value, validity })} /></Field>
+      <Field label="Paper Slippage" hint="Simulated only · 0 to 100 basis points" error={showErrors ? errors["orderPolicy.slippageBps"] : undefined}><TextInput value={value.slippageBps} onChange={(slippageBps) => onChange({ ...value, slippageBps: clean(slippageBps) })} suffix="bps" inputMode="decimal" /></Field>
+    </div>
+  );
+}
+
 export function TimeInput({ value, onChange, presets, invalid }: { value: string; onChange: (v: string) => void; presets?: string[]; invalid?: boolean }) {
   return (
     <div className="flex flex-col gap-2">

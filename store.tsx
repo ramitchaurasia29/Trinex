@@ -12,11 +12,16 @@ type Toast = { id: number; message: string; tone: ToastTone };
 
 /** Work-in-progress tool configuration shared by Select → Configure → Review. */
 export type Draft = {
+  id?: string;
+  version?: string;
   toolId: ToolId;
   positionId?: string;
   instrument?: string;
   config: Record<string, unknown>;
   editingId?: string;
+  brokerAccountId?: string;
+  instrumentId?: string;
+  status?: string;
 };
 
 type Store = {
@@ -25,9 +30,14 @@ type Store = {
   positions: Position[];
   closed: ClosedPosition[];
   brokers: Broker[];
+  replaceBrokers: (items: Broker[]) => void;
+  replacePositions: (items: Position[]) => void;
+  replaceClosed: (items: ClosedPosition[]) => void;
   armed: ArmedTool[];
+  replaceArmed: (items: ArmedTool[]) => void;
   alerts: AlertItem[];
   history: HistoryEvent[];
+  replaceHistory: (items: HistoryEvent[]) => void;
   market: MarketState;
   setMarket: (m: MarketState) => void;
   connectivity: Connectivity;
@@ -49,12 +59,16 @@ const Ctx = createContext<Store | null>(null);
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [user, setUserState] = useState({ name: "Arjun Mehta", phone: "+91 98201 44718", email: "arjun.mehta@gmail.com", since: "12 Mar 2026" });
-  const [positions, setPositions] = useState<Position[]>(POSITIONS);
-  const [closed, setClosed] = useState<ClosedPosition[]>(CLOSED);
-  const [brokers, setBrokers] = useState<Broker[]>(BROKERS);
-  const [armed, setArmed] = useState<ArmedTool[]>(ARMED);
-  const [alerts, setAlerts] = useState<AlertItem[]>(ALERTS);
-  const [history] = useState<HistoryEvent[]>(HISTORY);
+  const setUser = useCallback((changes: Partial<Store["user"]>) => {
+    setUserState((previous) => ({ ...previous, ...changes }));
+  }, []);
+  const fixtureMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).has("figr_screen");
+  const [positions, setPositions] = useState<Position[]>(fixtureMode ? POSITIONS : []);
+  const [closed, setClosed] = useState<ClosedPosition[]>(fixtureMode ? CLOSED : []);
+  const [brokers, setBrokers] = useState<Broker[]>(fixtureMode ? BROKERS : []);
+  const [armed, setArmed] = useState<ArmedTool[]>(fixtureMode ? ARMED : []);
+  const [alerts, setAlerts] = useState<AlertItem[]>(fixtureMode ? ALERTS : []);
+  const [history, setHistory] = useState<HistoryEvent[]>(fixtureMode ? HISTORY : []);
   const [market, setMarket] = useState<MarketState>("open");
   const [connectivity, setConnectivity] = useState<Connectivity>("online");
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -69,8 +83,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<Store>(() => ({
     user,
-    setUser: (u) => setUserState((p) => ({ ...p, ...u })),
+    setUser,
     positions, closed, brokers, armed, alerts, history,
+    replaceArmed: setArmed,
+    replaceHistory: setHistory,
+    replaceBrokers: setBrokers,
+    replacePositions: setPositions,
+    replaceClosed: setClosed,
     market, setMarket, connectivity, setConnectivity,
     draft, setDraft,
     arm: (t, editingId) => {
@@ -103,7 +122,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setArmed((a) => a.filter((x) => !x.positionId || !ids.includes(x.positionId)));
     },
     toast,
-  }), [user, positions, closed, brokers, armed, alerts, history, market, connectivity, draft, toast]);
+  }), [user, setUser, positions, closed, brokers, armed, alerts, history, market, connectivity, draft, toast]);
 
   return (
     <Ctx.Provider value={value}>

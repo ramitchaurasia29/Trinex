@@ -1,0 +1,38 @@
+services:
+  - type: worker
+    name: trinex-paper-execution-worker
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python -m app.worker
+    maxShutdownDelaySeconds: 30
+    autoDeployTrigger: commit
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: TRADING_MODE
+        value: paper
+      - key: DEV_OTP_PREVIEW
+        value: "false"
+      - key: SMS_PROVIDER
+        value: disabled
+      - key: MARKET_DATA_PROVIDER
+        value: mock
+      - key: NEON_BRANCH
+        value: dev-database-foundation
+      - key: NEON_BRANCH_ID
+        value: br-purple-sea-aobjdzbu
+      - key: REDIS_KEY_PREFIX
+        value: trinex
+      - key: EXECUTION_POLL_INTERVAL_SECONDS
+        value: "1"
+      - key: EXECUTION_LEASE_SECONDS
+        value: "30"
+      - key: EXECUTION_HEARTBEAT_SECONDS
+        value: "10"
+      - key: DATABASE_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false

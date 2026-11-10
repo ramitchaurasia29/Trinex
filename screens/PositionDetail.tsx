@@ -1,33 +1,34 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { Activity, Plus, RefreshCw, Shield, XCircle } from "lucide-react";
 import AppShell from "../AppShell";
-import { ArmedToolCard, CancelToolModal, ClosePositionModal, editArmed, ToolPickerSheet } from "../overlays";
+import { ArmedToolCard, CancelToolModal, editArmed, ToolPickerSheet } from "../overlays";
 import { inr, num, pnlOf, pctOf, qtyLabel, toolById, type ArmedTool, type HistoryEvent } from "../data";
 import { useStore } from "../store";
 import { Badge, BrokerTag, Button, Card, EmptyState, Pnl, SectionTitle, SideBadge } from "../ui";
+import { useTradingData } from "../trading";
 
 export default function PositionDetail() {
   const { id = "p1" } = useParams();
   const navigate = useNavigate();
   const { positions, armed, history, market, setDraft } = useStore();
-  const position = positions.find((item) => item.id === id);
+  const cached = positions.find((item) => item.id === id);
+  const [position, setPosition] = useState(cached);
+  const [loading, setLoading] = useState(!cached);
+  const trading = useTradingData();
   const [cancel, setCancel] = useState<ArmedTool | null>(null);
-  const [closing, setClosing] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const stale = market === "closed" || market === "holiday";
+  const stale = Boolean(position?.stale) || market === "closed" || market === "holiday";
+  useEffect(() => { let current = true; void trading.fetchPosition(id).then((item) => { if (current) setPosition(item); }).catch(() => undefined).finally(() => { if (current) setLoading(false); }); return () => { current = false; }; }, [id]);
   const positionTools = armed.filter((item) => item.positionId === position?.id);
   const instrumentHistory = useMemo(() => {
     if (!position) return [] as HistoryEvent[];
     const events = history.filter((event) => event.instrument === position.symbol).slice(0, 5);
-    if (events.length) return events;
-    return [
-      { id: "fallback-armed", time: "10:44", day: "Today" as const, toolId: "timed-exit" as const, text: "Timed Exit armed · 10:44", broker: position.broker, instrument: position.symbol },
-      { id: "fallback-protect", time: "10:20", day: "Today" as const, toolId: "trailing-sl" as const, text: "Auto Trailing SL configured · 10:20", broker: position.broker, instrument: position.symbol },
-    ];
+    return events;
   }, [history, position, positionTools]);
 
-  if (!position) return <AppShell title="Position closed" back="/positions" flow><EmptyState icon={Activity} title="Position closed" body="This position is no longer open. You can find it in your closed positions." action={<Button variant="secondary" onClick={() => navigate("/positions")}>Back to positions</Button>} /></AppShell>;
+  if (loading) return <AppShell title="Position" back="/positions" flow><p className="py-12 text-center text-sm text-muted">Loading position…</p></AppShell>;
+  if (!position) return <AppShell title="Position unavailable" back="/positions" flow><EmptyState icon={Activity} title="Position unavailable" body="This position was not found or is not available to your account." action={<Button variant="secondary" onClick={() => navigate("/positions")}>Back to positions</Button>} /></AppShell>;
 
   const dayChange = position.ltp - position.prevClose;
   const dayChangePct = position.prevClose ? dayChange / position.prevClose * 100 : 0;
@@ -111,19 +112,18 @@ export default function PositionDetail() {
             <p className="mt-2 text-xs text-muted">Margin utilization for this position</p>
           </Card>
           <div className="hidden gap-2 lg:flex">
-            <Button full variant="danger-soft" icon={XCircle} onClick={() => setClosing(true)}>Close Position</Button>
+            <Button full variant="danger-soft" icon={XCircle} disabled title="Paper execution is unavailable in Phase 3">Close unavailable</Button>
             <Button full icon={Plus} onClick={() => setPickerOpen(true)}>Add Tool</Button>
           </div>
         </aside>
       </div>
 
       <div className="fixed inset-x-0 bottom-0 z-30 grid grid-cols-2 gap-2 border-t border-line bg-surface px-4 py-3 lg:hidden">
-        <Button variant="danger-soft" icon={XCircle} onClick={() => setClosing(true)}>Close Position</Button>
+        <Button variant="danger-soft" icon={XCircle} disabled title="Paper execution is unavailable in Phase 3">Close unavailable</Button>
         <Button icon={Plus} onClick={() => setPickerOpen(true)}>Add Tool</Button>
       </div>
       <ToolPickerSheet position={pickerOpen ? position : null} onClose={() => setPickerOpen(false)} />
       <CancelToolModal tool={cancel} onClose={() => setCancel(null)} />
-      <ClosePositionModal position={closing ? position : null} onClose={() => setClosing(false)} onDone={() => navigate("/positions/closed")} />
     </AppShell>
   );
 }

@@ -8,7 +8,7 @@ import { FlowSteps, InstrumentContext, MobileBar, PositionContext, PreviewTable,
 import { useFlow } from "./useFlow";
 
 export default function Review() {
-  const { tool, toolId, mod, ctx, draft, init, qs, position, instrument, conflicts, store } = useFlow();
+  const { tool, toolId, mod, ctx, draft, init, qs, position, instrument, conflicts, store, toolData, remoteLoading } = useFlow();
   const nav = useNavigate();
   const config = draft?.config ?? { ...mod.defaults(ctx), ...(init.config ?? {}) };
   const [ack, setAck] = useState(!!init.ack);
@@ -19,29 +19,15 @@ export default function Review() {
   const blocked = conflicts.length > 0 && !ack;
   const stepIndex = tool.target === "self" ? 1 : 2;
 
-  const arm = () => {
+  const arm = async () => {
     if (blocked) return;
-    const target = mod.targetLabel?.(config, ctx) ?? position?.symbol ?? instrument?.symbol ?? "";
-    store.arm(
-      {
-        toolId,
-        positionId: position?.id,
-        target,
-        summary: mod.short(config, ctx),
-        status: marketOpen ? (toolId === "trailing-sl" || toolId === "mtm-lock" ? "active" : "waiting") : "queued",
-        statusText: marketOpen ? mod.statusText(config, ctx) : "Activates at market open",
-        config,
-      },
-      draft?.editingId,
-    );
-    store.toast(editing ? `${tool.name} updated` : `${tool.name} armed for ${target}`);
-    store.setDraft(null);
-    nav("/positions/armed");
+    if (!draft?.id || !draft.version) return;
+    try { const result = await toolData.transition({ id: draft.id, version: draft.version }, draft.status === "paused" ? "resume" : "arm"); store.toast(`${tool.name} ${draft.status === "paused" ? "resumed" : "armed in waiting state"} for ${result.target_label}`); store.setDraft(null); nav("/positions/armed"); } catch { store.toast("Unable to arm tool", "error"); }
   };
 
   const cta = (
     <Button full size="lg" icon={editing ? Check : Zap} disabled={blocked} onClick={arm}>
-      {editing ? "Save changes" : `Arm ${tool.name}`}
+      {draft?.status === "paused" ? "Save & Resume" : editing ? "Save changes" : `Arm ${tool.name}`}
     </Button>
   );
   const editLink = (
@@ -52,6 +38,7 @@ export default function Review() {
 
   return (
     <AppShell title={editing ? `Edit ${tool.name}` : tool.name} subtitle="Review & arm" back={`/tools/${toolId}/configure${qs}`} flow width="narrow">
+      {remoteLoading && <p className="py-8 text-center text-sm text-muted">Loading saved draft…</p>}
       <FlowSteps tool={tool} current={stepIndex} />
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <div className="flex min-w-0 flex-col gap-4">

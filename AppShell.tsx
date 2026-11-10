@@ -4,6 +4,7 @@ import {
   LineChart, LayoutGrid, Bell, Menu, ArrowLeft, Clock3, Moon, Sunrise, CalendarOff, WifiOff, AlertTriangle, ChevronDown, Check, Plus, RefreshCw,
 } from "lucide-react";
 import { useStore, type MarketState, type Connectivity } from "./store";
+import { useTradingData } from "./trading";
 import { BrokerMark, Banner, Button } from "./ui";
 
 const NAV = [
@@ -22,7 +23,8 @@ const MARKET: Record<MarketState, { label: string; dot: string; time: string }> 
 };
 
 export function MarketBanner() {
-  const { market, connectivity, brokers, setBrokerStatus, toast } = useStore();
+  const { market, connectivity, brokers, toast } = useStore();
+  const trading = useTradingData();
   const broken = brokers.filter((b) => b.status === "expired" || b.status === "error");
   return (
     <div className="flex flex-col gap-2 empty:hidden">
@@ -37,7 +39,7 @@ export function MarketBanner() {
           tone={b.status === "error" ? "warn" : "loss"}
           icon={AlertTriangle}
           action={
-            <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => { setBrokerStatus(b.id, "connected"); toast(`${b.name} reconnected · 2 tools resumed`); }}>
+            <Button size="sm" variant="secondary" icon={RefreshCw} onClick={() => void trading.reconnect(b.id).then(() => toast(`${b.name} reconnected · paused tools require review`)).catch(() => toast(trading.error ?? "Reconnect failed", "error"))}>
               Reconnect
             </Button>
           }
@@ -153,7 +155,7 @@ export default function AppShell({
           <div className="flex flex-col gap-1.5">
             {connected.map((b) => (
               <Link key={b.id} to="/more/brokers" className="flex items-center gap-2 text-sm text-ink-2 hover:text-ink">
-                <BrokerMark id={b.id} />
+                <BrokerMark id={b.provider ?? b.id} />
                 <span className="flex-1 truncate">{b.name}</span>
                 <span className={["h-2 w-2 rounded-full", b.status === "connected" ? "bg-profit-dot" : b.status === "syncing" ? "bg-warn-dot" : b.status === "error" ? "bg-loss-dot" : "bg-faint"].join(" ")} />
               </Link>

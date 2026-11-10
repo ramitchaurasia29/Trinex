@@ -12,6 +12,7 @@ export type RangeBreakConfig = ExitQty & {
   price: string;
   direction: BreakDirection;
   trigger: TriggerType;
+  candleInterval?: "1m" | "3m" | "5m" | "15m";
 };
 
 const INSTRUMENT_OPTIONS = [
@@ -36,7 +37,7 @@ const levelName = (level: RangeLevel) => level === "high" ? "High Level" : "Low 
 const triggerPhrase = (trigger: TriggerType) => trigger === "touch" ? "touches" : trigger === "cross" ? "crosses" : "closes beyond";
 
 export const rangeBreak: ToolModule<RangeBreakConfig> = {
-  defaults: (ctx) => ({ ...EXIT_QTY_DEFAULT, partialType: instrumentOf(ctx.position) === "fo" ? "lots" : "qty", instrument: instrumentOf(ctx.position), rangeLevel: "high", price: "", direction: "above", trigger: "touch" }),
+  defaults: (ctx) => ({ ...EXIT_QTY_DEFAULT, partialType: instrumentOf(ctx.position) === "fo" ? "lots" : "qty", instrument: instrumentOf(ctx.position), rangeLevel: "high", price: "", direction: "above", trigger: "touch", candleInterval: "1m" }),
 
   Form: ({ value, set, ctx, errors, showErrors }) => {
     const instrument = value.instrument;
@@ -57,6 +58,7 @@ export const rangeBreak: ToolModule<RangeBreakConfig> = {
         </Step>
         <Step n={4} title="Trigger Type" hint="Decide how price must meet or pass the level.">
           <Segmented options={TRIGGER_OPTIONS} value={value.trigger} onChange={(trigger) => set({ trigger })} />
+          {value.trigger === "close" && <Field label="Candle Interval" error={showErrors ? errors.candleInterval : undefined}><Segmented options={["1m", "3m", "5m", "15m"].map((interval) => ({ value: interval as "1m" | "3m" | "5m" | "15m", label: interval }))} value={value.candleInterval ?? "1m"} onChange={(candleInterval) => set({ candleInterval })} /></Field>}
         </Step>
         <ExitQuantitySteps start={5} value={value} set={set} instrument={instrument} position={ctx.position} errors={errors} showErrors={showErrors} />
       </div>
@@ -66,6 +68,7 @@ export const rangeBreak: ToolModule<RangeBreakConfig> = {
   validate: (c, ctx) => {
     const e: Record<string, string> = {};
     if (!c.price || Number(c.price) <= 0) e.price = "Enter a valid price level above ₹0";
+    if (c.trigger === "close" && !c.candleInterval) e.candleInterval = "Choose a candle interval";
     return { ...e, ...validateExitQty(c, c.instrument, ctx.position) };
   },
 
@@ -85,6 +88,7 @@ export const rangeBreak: ToolModule<RangeBreakConfig> = {
       ["Range Level", `${levelName(c.rangeLevel)} · ${c.price ? inr(Number(c.price)) : "—"}`],
       ["Break Direction", c.direction === "either" ? "Either" : c.direction === "above" ? "Above" : "Below"],
       ["Trigger Type", c.trigger === "close" ? "Candle Close" : c.trigger === "touch" ? "Touch" : "Cross"],
+      ...(c.trigger === "close" ? [["Candle Interval", c.candleInterval ?? "—"]] as [string, string][] : []),
       ["Exit Type", c.exitType === "full" ? "Full Exit" : "Partial Exit"],
       ...(c.exitType === "partial" ? [["Partial Exit", exitPhrase(c, c.instrument)], ["Remaining", ctx.position ? `${Math.max(0, (c.instrument === "fo" ? Math.round(ctx.position.qty / ctx.position.lotSize) : ctx.position.qty) - Number(c.instrument === "fo" && c.partialType === "lots" ? c.lots : c.partialType === "qty" ? c.qty : 0))} ${c.instrument === "fo" ? "lots" : "shares"}` : "—"]] as [string, string][] : []),
     ],

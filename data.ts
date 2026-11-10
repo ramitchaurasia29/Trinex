@@ -15,6 +15,7 @@ import {
 /* ------------------------------------------------------------------ */
 
 export type BrokerId =
+  | "mock"
   | "zerodha"
   | "angel"
   | "dhan"
@@ -30,16 +31,19 @@ export type BrokerId =
 export type BrokerStatus = "connected" | "syncing" | "error" | "expired" | "disconnected";
 
 export type Broker = {
-  id: BrokerId;
+  id: string;
+  provider?: BrokerId;
   name: string;
   short: string;
   mono: string;
   status: BrokerStatus;
   lastSync?: string;
   positions: number;
+  dataMode?: "SIMULATED";
 };
 
 export const BROKERS: Broker[] = [
+  { id: "mock", provider: "mock", name: "Mock Broker", short: "Mock", mono: "M", status: "disconnected", positions: 0, dataMode: "SIMULATED" },
   { id: "zerodha", name: "Zerodha", short: "Zerodha", mono: "Z", status: "connected", lastSync: "2s ago", positions: 5 },
   { id: "angel", name: "Angel One", short: "Angel", mono: "A", status: "connected", lastSync: "3s ago", positions: 2 },
   { id: "dhan", name: "Dhan", short: "Dhan", mono: "D", status: "connected", lastSync: "1s ago", positions: 1 },
@@ -77,10 +81,14 @@ export type Position = {
   product: "MIS" | "NRML" | "CNC";
   expiry?: string;
   broker: BrokerId;
+  brokerAccountId?: string;
   since: string;
   greeks?: { delta: number; gamma: number; theta: number; vega: number; iv: number };
   marginUsed: number;
   marginAvailable: number;
+  realizedPnl?: number;
+  stale?: boolean;
+  dataMode?: "SIMULATED";
 };
 
 export const POSITIONS: Position[] = [
@@ -141,9 +149,11 @@ export type ClosedPosition = {
   pnl: number;
   pct: number;
   broker: BrokerId;
+  brokerAccountId?: string;
   closedAt: string;
   method: ExitMethod;
   day: "today" | "yesterday" | "week";
+  dataMode?: "SIMULATED";
 };
 
 export const CLOSED: ClosedPosition[] = [
@@ -280,6 +290,7 @@ export type ArmedTool = {
   metric?: { label: string; value: string; progress?: number };
   armedAt: string;
   config?: Record<string, unknown>;
+  version?: string;
 };
 
 export const ARMED: ArmedTool[] = [

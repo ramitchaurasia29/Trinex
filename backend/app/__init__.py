@@ -1,0 +1,1 @@
+"""Trinex FastAPI backend."""

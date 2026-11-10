@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Bell, BookOpen, ChevronRight, Headphones, Info, LogOut, Palette, Shield, SlidersHorizontal } from "lucide-react";
 import AppShell from "../../AppShell";
+import { useAuth } from "../../auth";
 import { useStore } from "../../store";
 import { Badge, Button, Card, Dot, Modal, SectionTitle } from "../../ui";
 
@@ -11,7 +12,8 @@ const groups = [
   { title: "Account", rows: [{ label: "Account Management", to: "/more/account", icon: Shield }] },
 ];
 export default function More() {
-  const { user, brokers, armed } = useStore(); const nav = useNavigate(); const [logout, setLogout] = useState(false);
+  const { user, brokers, armed } = useStore(); const { logout: endSession } = useAuth(); const nav = useNavigate(); const [logout, setLogout] = useState(false); const [loggingOut, setLoggingOut] = useState(false);
+  const confirmLogout = async () => { setLoggingOut(true); try { await endSession(); nav("/login", { replace: true }); } finally { setLoggingOut(false); } };
   const connected = brokers.filter((b) => b.status !== "disconnected");
   const initials = user.name.split(" ").map((x) => x[0]).slice(0, 2).join("").toUpperCase();
   return <AppShell title="More" width="narrow"><div className="mx-auto grid max-w-4xl gap-5 lg:grid-cols-[1.2fr_0.8fr]">
@@ -23,6 +25,6 @@ export default function More() {
       <p className="text-center text-xs text-faint">v1.5.0 · Made in India</p>
     </div>
     <aside className="hidden lg:block"><Card><SectionTitle>At a glance</SectionTitle><div className="space-y-4"><div><p className="text-xs text-muted">Connected brokers</p><p className="mt-1 text-2xl font-semibold tracking-tight">{connected.length}</p></div><div className="h-px bg-line" /><div><p className="text-xs text-muted">Tools running</p><p className="mt-1 text-2xl font-semibold tracking-tight">{armed.length}</p></div><Link to="/more/brokers" className="inline-flex items-center gap-1 text-sm font-medium text-primary">Review connections <ChevronRight size={16} /></Link></div></Card></aside>
-    <Modal open={logout} onClose={() => setLogout(false)} title="Log out of Timed Exit?" actions={<><Button variant="secondary" onClick={() => setLogout(false)}>Stay signed in</Button><Button variant="danger" icon={LogOut} onClick={() => nav("/login")}>Log out</Button></>}><p>Your armed tools keep running on our servers. You’ll need an OTP to log back in.</p></Modal>
+    <Modal open={logout} onClose={() => setLogout(false)} title="Log out of Timed Exit?" actions={<><Button variant="secondary" onClick={() => setLogout(false)} disabled={loggingOut}>Stay signed in</Button><Button variant="danger" icon={LogOut} onClick={confirmLogout} disabled={loggingOut}>{loggingOut ? "Logging out…" : "Log out"}</Button></>}><p>Your armed tools keep running on our servers. You’ll need an OTP to log back in.</p></Modal>
   </div></AppShell>;
 }

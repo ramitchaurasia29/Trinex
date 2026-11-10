@@ -4,6 +4,7 @@ import { RefreshCw, ChevronRight, ArrowUpDown, Inbox, Zap, History, Plug, Slider
 import AppShell from "../AppShell";
 import { CLOSED, brokerName, inr, isFO, num, pnlOf, pctOf, qtyLabel, toolById, TOOLS, type BrokerId, type ClosedPosition, type Position } from "../data";
 import { useStore } from "../store";
+import { useTradingData } from "../trading";
 import { useScreenInit } from "../useScreenInit";
 import { Badge, BrokerTag, Button, Chip, EmptyState, IconButton, Pnl, Segmented, SideBadge, STATUS_TONE, Tabs, type Tone } from "../ui";
 import { AddToolChip, ArmedToolsSheet, ToolChip, ToolPickerSheet, editArmed, CancelToolModal } from "../overlays";
@@ -26,28 +27,29 @@ export default function Positions() {
   const [sp] = useSearchParams();
   const init = useScreenInit() as { empty?: boolean; group?: "position" | "tool"; day?: "today" | "yesterday" | "week" };
   const store = useStore();
+  const trading = useTradingData();
   const tab: Tab = pathname.endsWith("/armed") ? "armed" : pathname.endsWith("/closed") ? "closed" : "open";
   const empty = !!init.empty || sp.get("empty") === "1";
   const positions = empty ? [] : store.positions;
   const armed = empty ? [] : store.armed;
 
-  const [broker, setBroker] = useState<BrokerId | "all">("all");
+  const [broker, setBroker] = useState<string | "all">("all");
   const [picker, setPicker] = useState<Position | null>(null);
   const [sheet, setSheet] = useState<Position | null>(null);
 
-  const scoped = positions.filter((p) => broker === "all" || p.broker === broker);
+  const scoped = positions.filter((p) => broker === "all" || p.brokerAccountId === broker);
   const total = scoped.reduce((s, p) => s + pnlOf(p), 0);
   const invested = scoped.reduce((s, p) => s + p.avg * p.qty, 0);
   const brokerCounts = store.brokers
-    .map((b) => ({ ...b, n: positions.filter((p) => p.broker === b.id).length }))
+    .map((b) => ({ ...b, n: positions.filter((p) => p.brokerAccountId === b.id).length }))
     .filter((b) => b.n > 0);
-  const stale = store.market === "closed" || store.market === "holiday";
+  const stale = store.market === "closed" || store.market === "holiday" || scoped.some((position) => position.stale);
 
   return (
     <AppShell
       title="Positions"
-      subtitle={empty ? "No brokers connected" : `${positions.length} open across ${brokerCounts.length} brokers · Synced 2s ago`}
-      actions={<IconButton icon={RefreshCw} label="Refresh all brokers" onClick={() => store.toast(`Synced ${brokerCounts.length} brokers · ${positions.length} positions`, "info")} />}
+      subtitle={empty ? "No brokers connected" : `${positions.length} open across ${brokerCounts.length} brokers · ${trading.lastSyncedAt ? "Backend synced" : "Not synced yet"}`}
+      actions={<IconButton icon={RefreshCw} label="Refresh all brokers" onClick={() => void trading.syncAll().then(() => store.toast("Simulated positions synchronized", "info")).catch(() => store.toast(trading.error ?? "Synchronization failed", "error"))} />}
     >
       {empty ? (
         <EmptyState
@@ -61,7 +63,7 @@ export default function Positions() {
           {/* Summary */}
           <div className="mb-5 grid gap-4 rounded-lg border border-line bg-surface p-4 shadow-card sm:p-5 lg:grid-cols-[1fr_auto] lg:items-end">
             <div>
-              <p className="text-xs font-medium text-muted">{broker === "all" ? "Total unrealised P&L" : `${brokerName(broker)} · unrealised P&L`}</p>
+              <p className="text-xs font-medium text-muted">{broker === "all" ? "Total unrealised P&L" : `${store.brokers.find((b) => b.id === broker)?.name ?? "Broker"} · unrealised P&L`}</p>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-3">
                 <Pnl value={total} size="xl" className={stale ? "opacity-60" : ""} />
                 <span className={["font-mono text-sm tabular-nums", total >= 0 ? "text-profit" : "text-loss"].join(" ")}>
@@ -114,12 +116,13 @@ function OpenList({ positions, armed, onAdd, onTools, stale }: { positions: Posi
   const [kind, setKind] = useState<"all" | "fo" | "stock">("all");
   const [side, setSide] = useState<"all" | "BUY" | "SELL">("all");
   const [hasTools, setHasTools] = useState<"all" | "yes" | "no">("all");
+  const [search, setSearch] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const list = useMemo(() => {
     const l = positions.filter((p) => {
       const t = armed.some((a) => a.positionId === p.id);
-      return (kind === "all" || (kind === "fo" ? isFO(p.kind) : !isFO(p.kind))) && (side === "all" || p.side === side) && (hasTools === "all" || (hasTools === "yes" ? t : !t));
+      return p.symbol.toLowerCase().includes(search.trim().toLowerCase()) && (kind === "all" || (kind === "fo" ? isFO(p.kind) : !isFO(p.kind))) && (side === "all" || p.side === side) && (hasTools === "all" || (hasTools === "yes" ? t : !t));
     });
     const s = [...l];
     if (sort === "pnl-desc") s.sort((a, b) => pnlOf(b) - pnlOf(a));
@@ -127,9 +130,9 @@ function OpenList({ positions, armed, onAdd, onTools, stale }: { positions: Posi
     if (sort === "az") s.sort((a, b) => a.symbol.localeCompare(b.symbol));
     if (sort === "qty") s.sort((a, b) => b.qty - a.qty);
     return s;
-  }, [positions, armed, sort, kind, side, hasTools]);
+  }, [positions, armed, sort, kind, side, hasTools, search]);
 
-  const activeFilters = [kind !== "all", side !== "all", hasTools !== "all"].filter(Boolean).length;
+  const activeFilters = [search.trim() !== "", kind !== "all", side !== "all", hasTools !== "all"].filter(Boolean).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -153,10 +156,11 @@ function OpenList({ positions, armed, onAdd, onTools, stale }: { positions: Posi
         <Button size="sm" variant={activeFilters ? "primary" : "secondary"} icon={SlidersHorizontal} onClick={() => setFiltersOpen(!filtersOpen)}>
           Filter{activeFilters ? ` · ${activeFilters}` : ""}
         </Button>
-        {activeFilters > 0 && <Button size="sm" variant="ghost" onClick={() => { setKind("all"); setSide("all"); setHasTools("all"); }}>Clear</Button>}
+        {activeFilters > 0 && <Button size="sm" variant="ghost" onClick={() => { setSearch(""); setKind("all"); setSide("all"); setHasTools("all"); }}>Clear</Button>}
       </div>
       {filtersOpen && (
         <div className="grid gap-3 rounded-lg border border-line bg-surface p-4 sm:grid-cols-3">
+          <label className="sm:col-span-3"><span className="mb-1.5 block text-xs font-medium text-ink-2">Search positions</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Symbol or instrument" className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm outline-none focus:border-primary" /></label>
           <div><p className="mb-1.5 text-xs font-medium text-ink-2">Instrument</p><Segmented size="sm" value={kind} onChange={setKind} options={[{ value: "all", label: "All" }, { value: "fo", label: "F&O" }, { value: "stock", label: "Equity" }]} /></div>
           <div><p className="mb-1.5 text-xs font-medium text-ink-2">Side</p><Segmented size="sm" value={side} onChange={setSide} options={[{ value: "all", label: "All" }, { value: "BUY", label: "Buy" }, { value: "SELL", label: "Sell" }]} /></div>
           <div><p className="mb-1.5 text-xs font-medium text-ink-2">Tools</p><Segmented size="sm" value={hasTools} onChange={setHasTools} options={[{ value: "all", label: "All" }, { value: "yes", label: "Has tools" }, { value: "no", label: "No tools" }]} /></div>
@@ -187,6 +191,8 @@ function OpenList({ positions, armed, onAdd, onTools, stale }: { positions: Posi
                       <span className="text-sm font-semibold tracking-tight text-ink">{p.symbol}</span>
                       <SideBadge side={p.side} />
                       <BrokerTag id={p.broker} />
+                      <Badge tone="primary">PAPER</Badge>
+                      {p.stale && <Badge tone="warn">Stale</Badge>}
                     </div>
                     <p className="mt-1 text-xs text-muted">{qtyLabel(p)} · {p.product}{p.expiry ? ` · Exp ${p.expiry}` : ""}</p>
                   </div>
@@ -314,9 +320,9 @@ const METHOD_TONE: Record<string, Tone> = {
   "Timed Exit": "primary", "Auto-Close": "primary", "Range Break": "primary", "No-Motion": "primary", "MTM Lock": "primary",
 };
 
-function ClosedList({ closed, initialDay, broker }: { closed: ClosedPosition[]; initialDay?: "today" | "yesterday" | "week"; broker: BrokerId | "all" }) {
+function ClosedList({ closed, initialDay, broker }: { closed: ClosedPosition[]; initialDay?: "today" | "yesterday" | "week"; broker: string | "all" }) {
   const [day, setDay] = useState<"today" | "yesterday" | "week" | "custom">(initialDay ?? "today");
-  const list = closed.filter((c) => (broker === "all" || c.broker === broker) && (day === "week" || day === "custom" ? true : c.day === day));
+  const list = closed.filter((c) => (broker === "all" || c.brokerAccountId === broker) && (day === "week" || day === "custom" ? true : c.day === day));
   const realised = list.reduce((s, c) => s + c.pnl, 0);
   const wins = list.filter((c) => c.pnl > 0).length;
   const byTools = list.filter((c) => c.method !== "Manual" && c.method !== "External").length;

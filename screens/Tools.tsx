@@ -2,16 +2,18 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, ArrowRight, ChevronRight } from "lucide-react";
 import AppShell from "../AppShell";
-import { CATEGORIES, TOOLS, toolById } from "../data";
+import { CATEGORIES, TOOLS, toolById, type ToolId } from "../data";
 import { useStore } from "../store";
 import { useScreenInit } from "../useScreenInit";
 import { Badge, Dot, EmptyState, STATUS_TONE, TextInput } from "../ui";
 import { startTool } from "../overlays";
+import { useToolData } from "../tool-data";
 
 export default function Tools() {
   const nav = useNavigate();
   const init = useScreenInit() as { q?: string };
   const { armed, setDraft, positions } = useStore();
+  const toolData = useToolData();
   const [q, setQ] = useState(init.q ?? "");
   const match = (s: string) => s.toLowerCase().includes(q.trim().toLowerCase());
   const filtered = TOOLS.filter((t) => match(t.name) || match(t.description) || match(t.how));
@@ -38,6 +40,8 @@ export default function Tools() {
           </button>
         )}
       </div>
+
+      {toolData.drafts.length > 0 && <section className="mb-7"><div className="mb-3 flex items-baseline gap-3"><h2 className="text-base font-semibold tracking-tight">Saved drafts</h2><p className="text-sm text-muted">Continue after refresh or your next login</p></div><div className="grid gap-3 sm:grid-cols-2">{toolData.drafts.map((draft) => { const id = draft.tool_type as ToolId; const definition = toolById(id); const Icon = definition.icon; return <button key={draft.id} onClick={() => { setDraft({ id:draft.id, version:draft.version, status:draft.status, toolId:id, positionId:draft.positions[0]?.id, brokerAccountId:draft.broker_account_id ?? undefined, instrumentId:draft.instrument_id ?? undefined, config:draft.config }); const query = new URLSearchParams({ draft:draft.id }); if (draft.positions[0]) query.set("pos",draft.positions[0].id); nav(`/tools/${id}/configure?${query.toString()}`); }} className="flex items-center gap-3 rounded-lg border border-line bg-surface p-4 text-left shadow-card hover:border-primary-line"><span className="flex h-9 w-9 items-center justify-center rounded-md bg-primary-soft text-primary"><Icon size={18} /></span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold">{definition.name}</span><span className="block truncate text-xs text-muted">{draft.target_label} · Saved draft</span></span><ChevronRight size={16} className="text-faint" /></button>; })}</div></section>}
 
       {filtered.length === 0 ? (
         <EmptyState icon={Search} title={`No tools match “${q}”`} body="Try “exit”, “trail”, “profit” or “entry”." />

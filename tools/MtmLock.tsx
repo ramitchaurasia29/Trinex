@@ -31,7 +31,6 @@ export const mtmLock: ToolModule<MtmLockConfig> = {
   Form: ({ value, set, ctx, errors, showErrors }) => {
     const picked = selectedPositions(value.selectedPositionIds, ctx.positions);
     const available = ctx.positions.filter((position) => !value.selectedPositionIds.includes(position.id));
-    const matchedBasket = basketByName(value.basket);
     const combinedMtm = picked.reduce((total, position) => total + pnlOf(position), 0);
     const fieldError = (key: string, raw: string) => (showErrors || raw ? errors[key] : undefined);
     return (
@@ -41,7 +40,7 @@ export const mtmLock: ToolModule<MtmLockConfig> = {
           {value.positionType === "single" ? (
             <div className="flex flex-col gap-3">
               <Field label="Select Positions" error={showErrors && !picked.length ? errors.positions : undefined} hint="Search your open positions. Already-added positions are hidden.">
-                <PositionPicker positions={available} onAdd={(id) => set({ selectedPositionIds: [...value.selectedPositionIds, id] })} />
+                <PositionPicker positions={available} onAdd={(id) => set({ selectedPositionIds: [id] })} />
               </Field>
               {picked.length > 0 && (
                 <div className="flex flex-col gap-2">
@@ -57,16 +56,10 @@ export const mtmLock: ToolModule<MtmLockConfig> = {
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <Field label="Select Basket / Strategy" error={showErrors && !value.basket ? errors.basket : undefined}>
-                <div className="flex flex-col gap-2">
-                  {BASKETS.map((basket) => (
-                    <button key={basket.name} type="button" aria-pressed={value.basket === basket.name} onClick={() => set({ basket: basket.name })} className={["rounded-md border px-3 py-3 text-left", value.basket === basket.name ? "border-primary bg-primary-soft" : "border-line bg-surface hover:border-line-strong"].join(" ")}>
-                      <span className="block text-sm font-medium text-ink">{basket.name}</span><span className="mt-0.5 block text-xs text-muted">{basket.legs.length} positions</span>
-                    </button>
-                  ))}
-                </div>
+              <Field label="Select Basket Positions" error={showErrors && picked.length < 2 ? errors.positions ?? errors.basket : undefined} hint="Choose at least two open positions. Positions may belong to different connected brokers.">
+                <PositionPicker positions={available} onAdd={(id) => set({ selectedPositionIds: [...value.selectedPositionIds, id], basket: `${value.selectedPositionIds.length + 1}-position basket` })} />
               </Field>
-              {matchedBasket && <div className="rounded-md bg-surface-2 p-3"><p className="text-xs font-semibold text-ink-2">Positions included</p><ul className="mt-2 flex flex-col gap-1.5">{matchedBasket.legs.map((leg) => <li key={leg} className="flex items-center gap-2 text-sm text-ink-2"><span className="h-1.5 w-1.5 rounded-full bg-primary" />{leg}</li>)}</ul></div>}
+              {picked.map((position) => <div key={position.id} className="flex items-center justify-between rounded-md border border-line px-3 py-2"><span className="text-sm font-medium">{position.symbol}</span><button type="button" onClick={() => { const ids = value.selectedPositionIds.filter((id) => id !== position.id); set({ selectedPositionIds: ids, basket: ids.length ? `${ids.length}-position basket` : "" }); }} className="text-muted hover:text-loss">×</button></div>)}
             </div>
           )}
         </Step>
@@ -99,7 +92,7 @@ export const mtmLock: ToolModule<MtmLockConfig> = {
   validate: (c) => {
     const e: Record<string, string> = {};
     if (c.positionType === "single" && c.selectedPositionIds.length === 0) e.positions = "Select at least one position to create an MTM Lock.";
-    if (c.positionType === "basket" && !c.basket) e.basket = "Select a basket or strategy to continue.";
+    if (c.positionType === "basket" && c.selectedPositionIds.length < 2) e.positions = "Select at least two positions for the basket.";
     const activation = Number(c.activation);
     if (!c.activation || activation <= 0) e.activation = "Enter an MTM value greater than ₹0.";
     if (!c.progressive) {

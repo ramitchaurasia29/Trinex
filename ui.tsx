@@ -116,12 +116,12 @@ export const STATUS_LABEL: Record<ArmedStatus, string> = {
   failed: "Failed",
 };
 
-export function BrokerMark({ id, size = "sm" }: { id: BrokerId; size?: "xs" | "sm" | "md" | "lg" }) {
+export function BrokerMark({ id, size = "sm" }: { id: string; size?: "xs" | "sm" | "md" | "lg" }) {
   const b = BROKERS.find((x) => x.id === id);
   const cls = { xs: "h-4 w-4 text-[9px] rounded-[4px]", sm: "h-5 w-5 text-[10px] rounded-sm", md: "h-8 w-8 text-sm rounded-md", lg: "h-11 w-11 text-base rounded-lg" }[size]; // ds-ok: monogram scale
   return (
     <span className={["inline-flex shrink-0 items-center justify-center bg-ink font-semibold text-white", cls].join(" ")} aria-hidden>
-      {b?.mono}
+      {b?.mono ?? id.slice(0, 1).toUpperCase()}
     </span>
   );
 }

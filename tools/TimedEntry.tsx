@@ -1,4 +1,4 @@
-import { Field, InstrumentField, Step, TimeInput, RepeatCard, AddRow, v } from "./form";
+import { Field, InstrumentField, Step, TimeInput, RepeatCard, AddRow, OrderPolicyFields, defaultOrderPolicy, validateOrderPolicy, v, type OrderPolicy } from "./form";
 import { TextInput, Toggle } from "../ui";
 import { isFO } from "../data";
 import type { ToolModule } from "./types";
@@ -11,6 +11,7 @@ export type TimedEntryConfig = {
   time: string;
   qty: string;
   entries: LadderRow[];
+  orderPolicy: OrderPolicy;
 };
 
 const INSTRUMENT_OPTIONS = [
@@ -32,6 +33,7 @@ export const timedEntry: ToolModule<TimedEntryConfig> = {
     time: "09:35",
     qty: "",
     entries: [{ time: "09:35", qty: "" }],
+    orderPolicy: defaultOrderPolicy(ctx.instrument && isFO(ctx.instrument.kind) ? "fo" : "stock"),
   }),
 
   Form: ({ value, set, ctx, errors, showErrors }) => {
@@ -82,6 +84,9 @@ export const timedEntry: ToolModule<TimedEntryConfig> = {
             </>
           )}
         </Step>
+        <Step n={4} title="Paper Order Policy" hint="How scheduled entries are simulated. No live broker order is submitted.">
+          <OrderPolicyFields value={value.orderPolicy} onChange={(orderPolicy) => set({ orderPolicy })} instrument={value.instrument} errors={errors} showErrors={showErrors} />
+        </Step>
       </div>
     );
   },
@@ -108,7 +113,7 @@ export const timedEntry: ToolModule<TimedEntryConfig> = {
         }
       });
     }
-    return errors;
+    return { ...errors, ...validateOrderPolicy(c.orderPolicy) };
   },
 
   preview: (c) => {
@@ -126,6 +131,7 @@ export const timedEntry: ToolModule<TimedEntryConfig> = {
     const rows: [string, string][] = [["Instrument", c.instrument === "fo" ? "Futures / Options" : "Stocks"], ["Position Type", c.side === "BUY" ? "Buy" : "Sell"], ["Entry Ladder", c.ladder ? "On" : "Off"]];
     if (c.ladder) rows.push(["Total Entry", `${c.entries.reduce((sum, row) => sum + (Number(row.qty) || 0), 0)} ${c.instrument === "fo" ? "lots" : "shares"}`]);
     else rows.push(["Entry", `${c.time} · ${quantityLabel(c.instrument, c.qty)}`]);
+    rows.push(["Paper Order", `${c.orderPolicy.orderType} · ${c.orderPolicy.product} · ${c.orderPolicy.validity}`]);
     return [{ title: "Entry plan", rows }];
   },
 

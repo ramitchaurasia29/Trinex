@@ -3,6 +3,7 @@ import { ArrowRight, Check, LockKeyhole, RefreshCw, ShieldCheck, X } from "lucid
 import { useNavigate } from "react-router-dom";
 import { BROKERS, type BrokerId } from "../../data";
 import { useStore } from "../../store";
+import { useTradingData } from "../../trading";
 import { useScreenInit } from "../../useScreenInit";
 import { Badge, BrokerMark, Button, Card, Modal } from "../../ui";
 import { OnboardingFrame, PositionIllustration } from "./OnboardingFrame";
@@ -11,24 +12,17 @@ type ConnectFlow = { id: BrokerId; status: "connecting" | "success" | "error" | 
 
 export default function ConnectBrokers() {
   const initial = useScreenInit();
-  const seeded = Array.isArray(initial.connected) ? initial.connected.filter((v): v is BrokerId => typeof v === "string" && BROKERS.some((b) => b.id === v)) : [];
-  const [connected, setConnected] = useState<BrokerId[]>(seeded);
   const [flow, setFlow] = useState<ConnectFlow>(null);
   const navigate = useNavigate();
-  const { connectBroker } = useStore();
+  const { brokers } = useStore();
+  const trading = useTradingData();
+  const connected = brokers.filter((b) => b.status === "connected").map((b) => b.provider ?? b.id);
   const broker = flow ? BROKERS.find((b) => b.id === flow.id) : undefined;
 
-  const startConnect = (id: BrokerId) => {
+  const startConnect = async (id: BrokerId) => {
     setFlow({ id, status: "connecting" });
-    window.setTimeout(() => {
-      if (id === "upstox") setFlow({ id, status: "error" });
-      else if (id === "groww") setFlow({ id, status: "cancelled" });
-      else {
-        setConnected((old) => old.includes(id) ? old : [...old, id]);
-        connectBroker(id);
-        setFlow({ id, status: "success" });
-      }
-    }, 1200);
+    try { await trading.connect(id); setFlow({ id, status: "success" }); }
+    catch { setFlow({ id, status: "error" }); }
   };
 
   const title = flow?.status === "connecting" ? `Connecting to ${broker?.name}…` : flow?.status === "success" ? `${broker?.name} connected` : flow?.status === "error" ? "Connection failed" : "Connection cancelled";
@@ -41,7 +35,7 @@ export default function ConnectBrokers() {
         const isConnected = connected.includes(b.id);
         return <Card key={b.id} className="flex min-h-32 flex-col justify-between p-3" padded={false}>
           <div className="flex items-center gap-2"><BrokerMark id={b.id} size="md" /><p className="min-w-0 flex-1 text-xs font-semibold leading-snug text-ink">{b.name}</p></div>
-          {isConnected ? <Badge tone="profit" className="mt-3 w-fit"><Check size={12} strokeWidth={2} /> Connected</Badge> : <Button className="mt-3 w-full" size="sm" variant="secondary" onClick={() => startConnect(b.id)}>Connect</Button>}
+          {isConnected ? <Badge tone="profit" className="mt-3 w-fit"><Check size={12} strokeWidth={2} /> Connected</Badge> : <Button className="mt-3 w-full" size="sm" variant="secondary" onClick={() => void startConnect(b.id as BrokerId)}>Connect</Button>}
         </Card>;
       })}</div>
       <div className="mt-5 flex items-start gap-2 rounded-md bg-info-soft px-3 py-2.5 text-xs leading-5 text-info"><ShieldCheck size={15} strokeWidth={2} className="mt-0.5 shrink-0" /><span>Read-only sync via official broker APIs. We never see your password.</span></div>
@@ -49,9 +43,9 @@ export default function ConnectBrokers() {
       <p className="mt-4 flex items-center justify-center gap-1.5 text-center text-xs text-muted"><LockKeyhole size={13} strokeWidth={2} />Your broker login stays with your broker.</p>
     </div>
     <Modal open={Boolean(flow)} onClose={() => setFlow(null)} title={title ?? "Connect broker"} icon={flow?.status === "success" ? Check : flow?.status === "error" ? X : ShieldCheck} tone={flow?.status === "error" ? "danger" : "neutral"} actions={flow?.status === "connecting" ? <Button variant="secondary" onClick={() => setFlow(null)}>Cancel</Button> : flow?.status === "success" ? <Button onClick={() => setFlow(null)}>Done</Button> : <><Button variant="secondary" onClick={() => setFlow(null)}>Close</Button><Button icon={RefreshCw} onClick={() => flow && startConnect(flow.id)}>{flow?.status === "error" ? "Retry" : "Try Again"}</Button></>}>
-      {flow?.status === "connecting" && <p>Follow the secure sign-in steps from {broker?.name}. This demo will finish the connection shortly.</p>}
+      {flow?.status === "connecting" && <p>{flow.id === "mock" ? "Creating a simulated paper account…" : `Checking ${broker?.name} availability…`}</p>}
       {flow?.status === "success" && <p className="font-medium text-profit">✓ {broker?.name} connected</p>}
-      {flow?.status === "error" && <p>Couldn't reach Upstox. Check your connection and try again.</p>}
+      {flow?.status === "error" && <p>{flow.id === "mock" ? (trading.error ?? "Mock connection failed.") : `${broker?.name} authorization is not implemented. No account was created.`}</p>}
       {flow?.status === "cancelled" && <p>Connection cancelled. You can try again anytime.</p>}
     </Modal>
   </OnboardingFrame>;

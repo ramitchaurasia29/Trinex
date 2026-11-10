@@ -5,6 +5,7 @@ import { CATEGORIES, TOOLS, num, pnlOf, pctOf, qtyLabel, toolById, brokerName, t
 import { useStore, type Draft } from "./store";
 import { Badge, BrokerTag, Button, Dot, Modal, Pnl, Sheet, SideBadge, STATUS_TONE } from "./ui";
 import { MODULES } from "./tools/registry";
+import { useToolData } from "./tool-data";
 
 /* ------------------------------------------------------------------ */
 /* Navigation helpers                                                  */
@@ -30,8 +31,9 @@ export function startTool(nav: NavigateFunction, setDraft: (d: Draft | null) => 
 export function editArmed(nav: NavigateFunction, setDraft: (d: Draft | null) => void, positions: Position[], a: ArmedTool) {
   const position = positions.find((p) => p.id === a.positionId);
   const config = a.config ?? MODULES[a.toolId].defaults({ position, positions });
-  setDraft({ toolId: a.toolId, positionId: a.positionId, config, editingId: a.id });
-  nav(`/tools/${a.toolId}/configure${a.positionId ? `?pos=${a.positionId}` : ""}`);
+  setDraft({ id: a.id, version: a.version, status: a.status, toolId: a.toolId, positionId: a.positionId, config, editingId: a.id, brokerAccountId: position?.brokerAccountId });
+  const query = new URLSearchParams(); if (a.positionId) query.set("pos", a.positionId); query.set("draft", a.id);
+  nav(`/tools/${a.toolId}/configure?${query.toString()}`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -119,6 +121,8 @@ export function ToolPickerSheet({ position, onClose }: { position: Position | nu
 /* ------------------------------------------------------------------ */
 
 export function ArmedToolCard({ a, onEdit, onCancel, compact }: { a: ArmedTool; onEdit: () => void; onCancel: () => void; compact?: boolean }) {
+  const tools = useToolData();
+  const { toast } = useStore();
   const t = toolById(a.toolId);
   const Icon = t.icon;
   const tone = STATUS_TONE[a.status];
@@ -147,7 +151,8 @@ export function ArmedToolCard({ a, onEdit, onCancel, compact }: { a: ArmedTool; 
         </div>
       </div>
       <div className="mt-3 flex gap-2 border-t border-line pt-3">
-        <Button size="sm" variant="secondary" icon={Pencil} onClick={onEdit}>Edit</Button>
+        <Button size="sm" variant="secondary" icon={Pencil} disabled={a.status !== "paused"} title={a.status !== "paused" ? "Pause before editing" : undefined} onClick={onEdit}>Edit</Button>
+        {a.version && <Button size="sm" variant="ghost" onClick={() => void tools.transition({ id: a.id, version: a.version! }, a.status === "paused" ? "resume" : "pause").then(() => toast(a.status === "paused" ? "Tool resumed in waiting state" : "Tool paused")).catch(() => toast("Tool state changed; refresh and retry", "error"))}>{a.status === "paused" ? "Resume" : "Pause"}</Button>}
         <Button size="sm" variant="ghost" icon={XCircle} onClick={onCancel} className="text-loss hover:bg-loss-soft hover:text-loss">Cancel tool</Button>
         <span className="ml-auto self-center text-xs text-faint">Armed {a.armedAt}</span>
       </div>
@@ -189,6 +194,7 @@ export function ArmedToolsSheet({ position, onClose, onAdd }: { position: Positi
 
 export function CancelToolModal({ tool, onClose }: { tool: ArmedTool | null; onClose: () => void }) {
   const { cancelArmed, toast } = useStore();
+  const tools = useToolData();
   if (!tool) return null;
   const t = toolById(tool.toolId);
   return (
@@ -201,7 +207,7 @@ export function CancelToolModal({ tool, onClose }: { tool: ArmedTool | null; onC
       actions={
         <>
           <Button variant="secondary" onClick={onClose}>Keep Active</Button>
-          <Button variant="danger" onClick={() => { cancelArmed(tool.id); toast(`${t.name} cancelled`); onClose(); }}>Yes, Cancel</Button>
+          <Button variant="danger" onClick={() => { if (tool.version) void tools.transition({ id: tool.id, version: tool.version }, "cancel").then(() => { toast(`${t.name} cancelled`); onClose(); }).catch(() => toast("Unable to cancel tool", "error")); else { cancelArmed(tool.id); toast(`${t.name} cancelled`); onClose(); } }}>Yes, Cancel</Button>
         </>
       }
     >

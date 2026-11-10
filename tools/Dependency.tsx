@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Field, Note, Step, clean, v } from "./form";
+import { Field, Note, Step, OrderPolicyFields, defaultOrderPolicy, validateOrderPolicy, clean, v, type OrderPolicy } from "./form";
 import { Segmented, TextInput } from "../ui";
 import { INSTRUMENTS, inr, isFO, type Instrument, type Position } from "../data";
 import type { ToolModule } from "./types";
+import { useToolData } from "../tool-data";
 
 type Direction = "above" | "below";
 type Action = "entry" | "exit";
@@ -15,10 +16,12 @@ export type DependencyConfig = {
   action: Action;
   entrySymbol: string;
   entryQuantity: string;
+  entrySide?: "BUY" | "SELL";
   exitPositionId: string;
   exitQuantity: ExitQuantity;
   quantityType: QuantityType;
   exitValue: string;
+  orderPolicy?: OrderPolicy;
 };
 
 const referenceOptions: Instrument[] = INSTRUMENTS;
@@ -32,21 +35,24 @@ const actionOptions = [
   { value: "exit" as const, label: "Exit" },
 ];
 const fmtLevel = (level: string) => level ? inr(Number(level)) : "₹—";
-const instrumentName = (items: Instrument[], symbol: string) => items.find((item) => item.symbol === symbol)?.symbol ?? "Select instrument";
+const instrumentName = (items: Instrument[], symbol: string) => items.find((item) => item.symbol === symbol)?.symbol ?? (symbol || "Select instrument");
 const positionById = (positions: Position[], id: string) => positions.find((position) => position.id === id);
 
 export const dependency: ToolModule<DependencyConfig> = {
-  defaults: () => ({ referenceSymbol: "NIFTY", level: "", direction: "above", action: "entry", entrySymbol: entryOptions[0]?.symbol ?? "", entryQuantity: "", exitPositionId: "", exitQuantity: "full", quantityType: "qty", exitValue: "" }),
+  defaults: () => ({ referenceSymbol: "NIFTY", level: "", direction: "above", action: "entry", entrySymbol: entryOptions[0]?.symbol ?? "", entryQuantity: "", entrySide: "BUY", exitPositionId: "", exitQuantity: "full", quantityType: "qty", exitValue: "", orderPolicy: defaultOrderPolicy("stock") }),
 
   Form: ({ value, set, ctx, errors, showErrors }) => {
+    const toolData = useToolData();
+    const liveOptions: Instrument[] = toolData.instruments.map((item) => ({ symbol:item.display_symbol, exchange:item.exchange, kind:item.kind, ltp:0, lotSize:Number(item.lot_size), meta:`${item.exchange} · PAPER catalogue` }));
+    const liveEntries = liveOptions;
     const selectedExit = positionById(ctx.positions, value.exitPositionId);
-    const entryInstrument = INSTRUMENTS.find((instrument) => instrument.symbol === value.entrySymbol);
-    const refInstrument = INSTRUMENTS.find((instrument) => instrument.symbol === value.referenceSymbol);
+    const entryInstrument = liveEntries.find((instrument) => instrument.symbol === value.entrySymbol);
+    const refInstrument = liveOptions.find((instrument) => instrument.symbol === value.referenceSymbol);
     const error = (key: string, raw: string) => (showErrors || raw ? errors[key] : undefined);
     return (
       <div>
         <Step n={1} title="Reference Instrument" hint="This is the price you will monitor for a fresh crossing.">
-          <InstrumentSelect items={referenceOptions} value={value.referenceSymbol} onChange={(referenceSymbol) => set({ referenceSymbol })} placeholder="Search instruments" />
+          <InstrumentSelect items={liveOptions} value={value.referenceSymbol} onChange={(referenceSymbol) => set({ referenceSymbol })} placeholder="Search instruments" />
           {refInstrument && <p className="text-xs text-muted">Current LTP <span className="font-mono tabular-nums text-ink-2">{inr(refInstrument.ltp)}</span></p>}
         </Step>
         <Step n={2} title="Level" hint={refInstrument ? `Set the price level · current LTP ${inr(refInstrument.ltp)}.` : "Set the price level to watch."}>
@@ -63,12 +69,16 @@ export const dependency: ToolModule<DependencyConfig> = {
         {value.action === "entry" ? (
           <>
             <Step n={5} title="Entry Instrument" hint="This can be different from the reference instrument.">
-              <InstrumentSelect items={entryOptions} value={value.entrySymbol} onChange={(entrySymbol) => set({ entrySymbol })} placeholder="Search stocks or contracts" />
+              <InstrumentSelect items={liveEntries} value={value.entrySymbol} onChange={(entrySymbol) => set({ entrySymbol })} placeholder="Search stocks or contracts" />
             </Step>
             <Step n={6} title="Quantity" hint="The quantity to enter after the crossing is detected.">
+              <Field label="Entry Side" error={showErrors ? errors.entrySide : undefined}><Segmented options={[{ value: "BUY" as const, label: "Buy" }, { value: "SELL" as const, label: "Sell" }]} value={value.entrySide ?? "BUY"} onChange={(entrySide) => set({ entrySide })} /></Field>
               <Field error={error("entryQuantity", value.entryQuantity)} hint={entryInstrument ? `${entryInstrument.meta} · lot size ${entryInstrument.lotSize}` : undefined}>
                 <TextInput value={value.entryQuantity} onChange={(entryQuantity) => set({ entryQuantity: entryQuantity.replace(/[^0-9]/g, "") })} placeholder={entryInstrument && isFO(entryInstrument.kind) ? "e.g. 900" : "e.g. 100"} suffix="qty" inputMode="numeric" invalid={!!error("entryQuantity", value.entryQuantity)} />
               </Field>
+            </Step>
+            <Step n={7} title="Paper Order Policy" hint="How the dependency entry is simulated. No live order is submitted.">
+              <OrderPolicyFields value={value.orderPolicy ?? defaultOrderPolicy(entryInstrument && isFO(entryInstrument.kind) ? "fo" : "stock")} onChange={(orderPolicy) => set({ orderPolicy })} instrument={entryInstrument && isFO(entryInstrument.kind) ? "fo" : "stock"} errors={errors} showErrors={showErrors} />
             </Step>
           </>
         ) : (
@@ -98,11 +108,13 @@ export const dependency: ToolModule<DependencyConfig> = {
 
   validate: (c, ctx) => {
     const e: Record<string, string> = {};
-    if (!INSTRUMENTS.some((instrument) => instrument.symbol === c.referenceSymbol)) e.referenceSymbol = "Choose a reference instrument";
+    if (!c.referenceSymbol) e.referenceSymbol = "Choose a reference instrument";
     if (!c.level || Number(c.level) <= 0) e.level = "Enter a valid price level above ₹0";
     if (c.action === "entry") {
-      if (!entryOptions.some((instrument) => instrument.symbol === c.entrySymbol)) e.entrySymbol = "Choose an entry instrument";
+      if (!c.entrySymbol) e.entrySymbol = "Choose an entry instrument";
       if (!c.entryQuantity || Number(c.entryQuantity) <= 0 || !Number.isInteger(Number(c.entryQuantity))) e.entryQuantity = "Enter a whole quantity above 0";
+      if (!c.entrySide) e.entrySide = "Choose Buy or Sell";
+      Object.assign(e, validateOrderPolicy(c.orderPolicy));
     } else {
       const position = positionById(ctx.positions, c.exitPositionId);
       if (!position) e.exitPositionId = "Choose an open position to exit";
@@ -128,7 +140,7 @@ export const dependency: ToolModule<DependencyConfig> = {
 
   review: (c, ctx) => {
     const rows: [string, string][] = [["Reference Instrument", c.referenceSymbol], ["Level", fmtLevel(c.level)], ["Crossing Direction", c.direction === "above" ? "Cross Above" : "Cross Below"], ["Action", c.action === "entry" ? "Entry" : "Exit"]];
-    if (c.action === "entry") rows.push(["Entry Instrument", instrumentName(entryOptions, c.entrySymbol)], ["Quantity", `${c.entryQuantity || "—"} qty`]);
+    if (c.action === "entry") rows.push(["Entry Instrument", instrumentName(entryOptions, c.entrySymbol)], ["Entry Side", c.entrySide ?? "—"], ["Quantity", `${c.entryQuantity || "—"} qty`], ["Paper Order", c.orderPolicy ? `${c.orderPolicy.orderType} · ${c.orderPolicy.product} · ${c.orderPolicy.validity}` : "—"]);
     else {
       const position = positionById(ctx.positions, c.exitPositionId);
       rows.push(["Exit Instrument", position?.symbol ?? "—"], ["Exit Quantity", c.exitQuantity === "full" ? "Full Position" : `${c.exitValue || "—"} ${c.quantityType === "pct" ? "%" : "qty"}`]);
